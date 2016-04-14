@@ -1,66 +1,157 @@
- <!DOCTYPE html>
- <meta charset="utf-8" />
- <title>WebSocket Test</title>
- <script language="javascript" type="text/javascript">
+<!DOCTYPE html>
+<meta charset="utf-8"/>
+<title id="title">Touch Test</title>
+<script language="javascript" type="text/javascript">
 
-  var wsUri = "ws://192.168.0.140:81/";
-  var output;
+  // Variables
+  var drawing = false;
+  var matrixPos = {x:0, y:0};
+  var lastMatrixPos = {x:0, y:0};
+  var pos = {x:0, y:0};
+  var lastPos = {x:0, y:0};
+  var ctx = null;
+  var bound = null;
+  var ws = null;
 
-  function init()
-  {
-    output = document.getElementById("output");
-    testWebSocket();
+  // WebSocket
+  var wsUri = "ws://" + window.location.hostname + ":81/";
+
+  function init() {
+    // Create WebSocket
+    title.innerHTML = wsUri;
+    ws = new WebSocket(wsUri);
+
+    // Canvas
+    bound = box.getBoundingClientRect();
+    ctx = box.getContext("2d");
+    ctx.canvas.width = window.innerWidth;
+    ctx.canvas.height = window.innerHeight;
+    ctx.strokeStyle = "#222222";
+    ctx.lineWith = 2;
+    clearCanvas();
+
+    // Touch Events
+    box.addEventListener('touchstart', onTouchStart, false);
+    box.addEventListener('touchend', onTouchEnd, false);
+    box.addEventListener('touchmove', onTouchMove, false);
+
+    // Mouse Events
+    box.addEventListener('mousedown', onMouseDown, false);
+    box.addEventListener('mouseup', onMouseUp, false);
+    box.addEventListener('mousemove', onMouseMove, false);
+
+    // Canvas animation interval
+    // Tries obtaining an appropriate method to get callbacks
+    window.requestAnimFrame = (function (callback) {
+      return window.requestAnimationFrame || 
+      window.webkitRequestAnimationFrame ||
+      window.mozRequestAnimationFrame ||
+      window.oRequestAnimationFrame ||
+      window.msRequestAnimaitonFrame ||
+      function (callback) {
+        window.setTimeout(callback, 1000/60);
+      };
+    })();
+
+    // Animate Canvas
+    (function drawLoop () {
+      requestAnimFrame(drawLoop);
+      renderCanvas();
+    })();
   }
 
-  function testWebSocket()
-  {
-    websocket = new WebSocket(wsUri);
-    websocket.onopen = function(evt) { onOpen(evt) };
-    websocket.onclose = function(evt) { onClose(evt) };
-    websocket.onmessage = function(evt) { onMessage(evt) };
-    websocket.onerror = function(evt) { onError(evt) };
+  function onMouseDown(e) {
+    drawing = true;
+    lastPos.x = e.clientX - bound.left;
+    lastPos.y = e.clientY - bound.top;
   }
 
-  function onOpen(evt)
-  {
-    writeToScreen("CONNECTED");
-    doSend("WebSocket rocks");
+  function onMouseUp(e) {
+    drawing = false;
+    clearCanvas();
   }
 
-  function onClose(evt)
-  {
-    writeToScreen("DISCONNECTED");
+  function onMouseMove(e) {
+    pos.x = e.clientX - bound.left;
+    pos.y = e.clientY - bound.top;
   }
 
-  function onMessage(evt)
-  {
-    writeToScreen('<span style="color: blue;">RESPONSE: ' + evt.data+'</span>');
-    websocket.close();
+  function onTouchStart(e) {
+    drawing = true;
+    lastPos.x = e.clientX - bound.left;
+    lastPos.y = e.clientY - bound.top;
+    if (e.target == box) e.preventDefault();
   }
 
-  function onError(evt)
-  {
-    writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+  function onTouchEnd(e) {
+    drawing = false;
+    if (e.target == box) e.preventDefault();
+    clearCanvas();
   }
 
-  function doSend(message)
-  {
-    writeToScreen("SENT: " + message);
-    websocket.send(message);
+  function onTouchMove(e) {
+    pos.x = e.touches[0].clientX - bound.left;
+    pos.y = e.touches[0].clientY - bound.top;
+    if (e.target == box) e.preventDefault();
   }
 
-  function writeToScreen(message)
-  {
-    var pre = document.createElement("p");
-    pre.style.wordWrap = "break-word";
-    pre.innerHTML = message;
-    output.appendChild(pre);
+  function clearCanvas() {
+    // Clear Screen
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    // Draw Grid
+    for (x = 1; x < 4; x++) {
+      ctx.beginPath();
+      ctx.moveTo(x * (window.innerWidth/4), 0);
+      ctx.lineTo(x * (window.innerWidth/4), window.innerHeight);
+      ctx.stroke();
+      ctx.closePath();
+    }
+
+    for (y = 1; y < 8; y++) {
+      ctx.beginPath();
+      ctx.moveTo(0,           y * (window.innerHeight/8));
+      ctx.lineTo(window.innerWidth, y * (window.innerHeight/8));
+      ctx.stroke();
+      ctx.closePath();
+    }
   }
 
+  function renderCanvas() {
+    if (drawing) {
+      // Clear Screen
+      clearCanvas();
+
+      // Quantize
+      matrixPos.x = Math.floor(pos.x / (window.innerWidth / 4));
+      matrixPos.y = Math.floor(pos.y / (window.innerHeight / 8));
+
+      // Draw on Canvas
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(
+        matrixPos.x * (window.innerWidth / 4),
+        matrixPos.y * (window.innerHeight / 8),
+        window.innerWidth / 4,
+        window.innerHeight / 8);
+
+      // Send through WebSocket
+      if (matrixPos.x != lastMatrixPos.x || matrixPos.y != lastMatrixPos.y) {
+        ws.send("X" + matrixPos.x + "Y" + matrixPos.y);
+        lastMatrixPos.x = matrixPos.x;
+        lastMatrixPos.y = matrixPos.y;
+      }
+    }
+  }
+
+  // Run initialization code
   window.addEventListener("load", init, false);
 
+
+
 </script>
+<body style="margin:0px; overflow:hidden;">
+  
+  <canvas id="box"></canvas>
 
-<h2>WebSocket Test</h2>
-
-<div id="output"></div>
+</body>

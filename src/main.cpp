@@ -27,6 +27,7 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(4, 8, MATRIX_PIN,
 // Handle Web Socket Events
 void socketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
 	IPAddress ip = socket.remoteIP(num);
+	int x, y;
 
 	switch (type) {
 		case WStype_DISCONNECTED:
@@ -39,6 +40,15 @@ void socketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
 
 		case WStype_TEXT:
 			Serial.printf("WS: (%d.%d.%d.%d) '%s'.\n", ip[0], ip[1], ip[2], ip[3], payload);
+			
+			// "Parse"
+			x = payload[1] - '0';
+			y = payload[3] - '0';
+
+			matrix.fillScreen(matrix.Color(0, 0, 0));
+			matrix.drawPixel(x, y, matrix.Color(255, 255, 255));
+			matrix.show();
+
 			break;
 
 		case WStype_BIN:
@@ -58,15 +68,21 @@ void setup() {
 
     // Setup access point
     uint16_t timeout = millis();
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP("LED Matrix");
     WiFi.begin(ssid, pass);
-    while (WiFi.status() != WL_CONNECTED) {
+    while (millis() - timeout < 5000 && WiFi.status() != WL_CONNECTED) {
 		delay(1000);
 		Serial.printf(".");
     }
-    Serial.printf(" Done.\n");
-    Serial.printf("WiFi IP: ");
-    Serial.println(WiFi.localIP());
+
+    if (WiFi.status() == WL_CONNECTED) {
+	    Serial.printf(" Done.\n");
+	    Serial.printf("WiFi IP: ");
+	    Serial.println(WiFi.localIP());
+	} else {
+		Serial.printf(" Unavailable.\n");
+	}
 
     // Setup OTA updates
     ArduinoOTA.onStart([](){
@@ -102,7 +118,8 @@ void setup() {
     // Setup LED Matrix
     matrix.begin();
     matrix.setBrightness(40);
-    matrix.setTextColor(matrix.Color(0, 255, 255));
+    matrix.fillScreen(matrix.Color(255, 255, 255));
+    matrix.show();
 }
 
 int x = 3;
@@ -111,9 +128,6 @@ void loop() {
     httpHandle();
     socket.loop();
 
-    matrix.fillScreen(0);
-    matrix.drawChar(0, 0, 'C', matrix.Color(255, 255, 255), matrix.Color(0, 0, 0), 8);
-    matrix.show();
-    delay(100);
+    //delay(100);
 }
 
