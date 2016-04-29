@@ -1,157 +1,226 @@
 <!DOCTYPE html>
 <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, 
+    user-scalable=no, initial-scale=1, maximum-scale=1, user-scalable=0" />
 <title id="title">Touch Test</title>
 <script language="javascript" type="text/javascript">
 
-  // Variables
-  var drawing = false;
-  var matrixPos = {x:0, y:0};
-  var lastMatrixPos = {x:0, y:0};
-  var pos = {x:0, y:0};
-  var lastPos = {x:0, y:0};
-  var ctx = null;
-  var bound = null;
-  var ws = null;
-
-  // WebSocket
-  var wsUri = "ws://" + window.location.hostname + ":81/";
+  canvas = null;
+  ctx = null;
+  bound = null;
+  currentWidth = null;
+  currentHeight = null;
+  gridWidth = 4;
+  gridHeight = 8;
+  color = "#ffffff";
 
   function init() {
-    // Create WebSocket
-    title.innerHTML = wsUri;
-    ws = new WebSocket(wsUri);
+    Matrix.init("ws://192.168.4.1:81/");
+    Matrix.CLEAR();
+    Matrix.SHOW();
 
-    // Canvas
-    bound = box.getBoundingClientRect();
-    ctx = box.getContext("2d");
-    ctx.canvas.width = window.innerWidth;
-    ctx.canvas.height = window.innerHeight;
-    ctx.strokeStyle = "#222222";
-    ctx.lineWith = 2;
-    clearCanvas();
+    canvas = document.getElementsByTagName('canvas')[0];
+    bound = canvas.getBoundingClientRect();
+    ctx = canvas.getContext("2d");
 
-    // Touch Events
-    box.addEventListener('touchstart', onTouchStart, false);
-    box.addEventListener('touchend', onTouchEnd, false);
-    box.addEventListener('touchmove', onTouchMove, false);
-
-    // Mouse Events
-    box.addEventListener('mousedown', onMouseDown, false);
-    box.addEventListener('mouseup', onMouseUp, false);
-    box.addEventListener('mousemove', onMouseMove, false);
-
-    // Canvas animation interval
-    // Tries obtaining an appropriate method to get callbacks
-    window.requestAnimFrame = (function (callback) {
-      return window.requestAnimationFrame || 
-      window.webkitRequestAnimationFrame ||
-      window.mozRequestAnimationFrame ||
-      window.oRequestAnimationFrame ||
-      window.msRequestAnimaitonFrame ||
-      function (callback) {
-        window.setTimeout(callback, 1000/60);
-      };
-    })();
-
-    // Animate Canvas
-    (function drawLoop () {
-      requestAnimFrame(drawLoop);
-      renderCanvas();
-    })();
+    resize();
   }
 
-  function onMouseDown(e) {
-    drawing = true;
-    lastPos.x = e.clientX - bound.left;
-    lastPos.y = e.clientY - bound.top;
+  function resize() {
+    currentWidth = canvas_div.clientWidth;
+    currentHeight = canvas_div.clientHeight;
+
+    ctx.canvas.width = currentWidth;
+    ctx.canvas.height = currentHeight;
   }
 
-  function onMouseUp(e) {
-    drawing = false;
-    clearCanvas();
+  function onSlider() {
+    color = "#" +
+      ("00" + parseInt(r.value).toString(16)).slice(-2) +
+      ("00" + parseInt(g.value).toString(16)).slice(-2) +
+      ("00" + parseInt(b.value).toString(16)).slice(-2);
+    header_div.innerHTML = color;
+    color_div.style.backgroundColor = color;
+    Matrix.BRIGHT(brightness.value);
+    Matrix.SHOW();
   }
 
-  function onMouseMove(e) {
-    pos.x = e.clientX - bound.left;
-    pos.y = e.clientY - bound.top;
-  }
+  var Draw = {
+    clear: function() {
+      ctx.clearRect(0, 0, currentWidth, currentHeight);
+    },
 
-  function onTouchStart(e) {
-    drawing = true;
-    lastPos.x = e.clientX - bound.left;
-    lastPos.y = e.clientY - bound.top;
-    if (e.target == box) e.preventDefault();
-  }
-
-  function onTouchEnd(e) {
-    drawing = false;
-    if (e.target == box) e.preventDefault();
-    clearCanvas();
-  }
-
-  function onTouchMove(e) {
-    pos.x = e.touches[0].clientX - bound.left;
-    pos.y = e.touches[0].clientY - bound.top;
-    if (e.target == box) e.preventDefault();
-  }
-
-  function clearCanvas() {
-    // Clear Screen
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
-
-    // Draw Grid
-    for (x = 1; x < 4; x++) {
-      ctx.beginPath();
-      ctx.moveTo(x * (window.innerWidth/4), 0);
-      ctx.lineTo(x * (window.innerWidth/4), window.innerHeight);
-      ctx.stroke();
-      ctx.closePath();
-    }
-
-    for (y = 1; y < 8; y++) {
-      ctx.beginPath();
-      ctx.moveTo(0,           y * (window.innerHeight/8));
-      ctx.lineTo(window.innerWidth, y * (window.innerHeight/8));
-      ctx.stroke();
-      ctx.closePath();
-    }
-  }
-
-  function renderCanvas() {
-    if (drawing) {
-      // Clear Screen
-      clearCanvas();
-
-      // Quantize
-      matrixPos.x = Math.floor(pos.x / (window.innerWidth / 4));
-      matrixPos.y = Math.floor(pos.y / (window.innerHeight / 8));
-
-      // Draw on Canvas
-      ctx.fillStyle = "#000000";
+    gridPixel: function(x, y, col) {
+      ctx.fillStyle = col;
       ctx.fillRect(
-        matrixPos.x * (window.innerWidth / 4),
-        matrixPos.y * (window.innerHeight / 8),
-        window.innerWidth / 4,
-        window.innerHeight / 8);
+        x * (currentWidth / gridWidth),
+        y * (currentHeight / gridHeight),
+        currentWidth / gridWidth,
+        currentHeight / gridHeight);
+    }
+  };
 
-      // Send through WebSocket
-      if (matrixPos.x != lastMatrixPos.x || matrixPos.y != lastMatrixPos.y) {
-        ws.send("X" + matrixPos.x + "Y" + matrixPos.y);
-        lastMatrixPos.x = matrixPos.x;
-        lastMatrixPos.y = matrixPos.y;
+  var Input = {
+
+    lastX: 0,
+    lastY: 0,
+
+    set: function(e) {
+
+      if (e.clientX < currentWidth && (e.clientY - bound.top) < currentHeight && (e.clientY - bound.top) > 0) {
+        x = Math.floor(e.clientX / (currentWidth / gridWidth));
+        y = Math.floor((e.clientY - bound.top) / (currentHeight / gridHeight));
+      
+        if (x != Input.lastX || y != Input.lastY) {
+          Draw.gridPixel(x, y, color);
+          Matrix.PIXEL(x, y, r.value, g.value, b.value);
+          Matrix.SHOW();
+        }
+
+        Input.lastX = x;
+        Input.lastY = y;
       }
     }
+  };
+
+  var Matrix = {
+    ws: null,
+
+    init: function(uri) {
+      ws = new WebSocket(uri);
+    },
+
+    PIXEL: function(x, y, r, g, b) {
+      if (ws.readyState == 1)
+        ws.send("PIXEL " + x + " " + y+ " " + r+ " " + g+ " " + b);
+    },
+
+    FILL: function(r, g, b) {
+      if (ws.readyState == 1)
+        ws.send("FILL " + r + " " + g + " " + b);
+    },
+
+    SHOW: function() {
+      if (ws.readyState == 1)
+        ws.send("SHOW");
+    },
+
+    CLEAR: function() {
+      if (ws.readyState == 1)
+        ws.send("CLEAR");
+    },
+
+    BRIGHT: function(b) {
+      if (ws.readyState == 1)
+        ws.send("BRIGHT " + b);
+    }
   }
 
-  // Run initialization code
-  window.addEventListener("load", init, false);
-
-
+  // Event Listeners
+  window.addEventListener('load', init, false);
+  window.addEventListener('resize', resize, false);
+  window.addEventListener('touchstart', function (e) {
+    Input.set(e.touches[0]);
+    if (e.target == canvas) e.preventDefault();
+  }, false);
+  window.addEventListener('touchmove', function (e) {
+    Input.set(e.touches[0]);
+    if (e.target == canvas) e.preventDefault();
+  }, false);
+  window.addEventListener('mousemove', function (e) {
+    Input.set(e);
+    //e.preventDefault();
+  }, false);
 
 </script>
-<body style="margin:0px; overflow:hidden;">
-  
-  <canvas id="box"></canvas>
 
+<style>
+  * { padding: 0; margin: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #wrap_div {
+    background-color: yellow;
+    width: 100%;
+    height: 100%;
+  }
+
+  #header_div {
+    background-color: black;
+    color: white;
+    text-align: center;
+    width: 100%;
+    height: 5%;
+  }
+
+  #body_div {
+    background-color: blue;
+    height: 95%;
+  }
+
+  #canvas_div {
+    background-color: green;
+    width: 100%;
+    height: 80%;
+  }
+
+  canvas {
+    display: block;
+    margin: 0 auto;
+    background-color: #fff;
+  }
+
+  #sliders_div {
+    background-color: gray;
+    float: left;
+    display: block;
+    width: 80%;
+    height: 20%;
+  }
+
+  #color_div {
+    background-color: black;
+    float: right;
+    width: 20%;
+    height: 20%;
+  }
+
+  input {
+    width: 75%;
+    height: 24%;
+    float: middle;
+  }
+
+  b {
+    width: 20%;
+    height: 25%;
+    float: left;
+  }
+
+
+</style>
+
+<body>
+  <div id="wrap_div">
+    <div id="header_div">
+      <h1>LED Matrix</h1>
+    </div>
+    <div id="body_div">
+      <div id="canvas_div">
+        <canvas></canvas>
+      </div>
+
+      <div id="sliders_div">
+        <b>Brightness</b><input id="brightness" type="range" min="0" max="255" step="1" onchange="onSlider();" />
+        <b>Red</b><input id="r" type="range" min="0" max="255" step="1" onchange="onSlider();" />
+        <b>Green</b><input id="g" type="range" min="0" max="255" step="1" onchange="onSlider();" />
+        <b>Blue</b><input id="b" type="range" min="0" max="255" step="1" onchange="onSlider();" />
+      </div>
+
+      <div id="color_div"></div>
+    </div>
+  </div>
 </body>
